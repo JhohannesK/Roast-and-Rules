@@ -1,25 +1,21 @@
 import { streamText } from "ai";
 import { getAnthropicModel } from "@/lib/ai";
+import { getPlatform, type PlatformId } from "@/lib/platforms";
+import { formatUserContent, sanitizeFiles } from "@/lib/format-input";
 
 export const maxDuration = 120;
 
-const RULES_SYSTEM = `You are an expert staff engineer. Analyze the user's code and/or project description and generate a cohesive set of Cursor project rules as MULTIPLE markdown files.
+function rulesSystem(platformId: PlatformId): string {
+  const platform = getPlatform(platformId);
+  return `You are an expert staff engineer. Analyze the user's code and/or project description and generate a cohesive set of ${platform.label} project rules.
 
-Output format (STRICT — no prose outside these blocks):
-For each file, emit exactly:
+${platform.systemRules}
 
-<<<FILE relative/path/under/cursor/rules.md>>>
-(file content)
-<<<END FILE>>>
-
-Rules for each file:
-- YAML frontmatter at the top with: title, description, and when relevant \`globs\` and \`alwaysApply\`.
-- Use \`alwaysApply: true\` only for small global rules; prefer \`globs\` for stack-specific files.
-- \`type\` is not required; use frontmatter fields that help Cursor (description, globs, alwaysApply).
+Rules for all files:
 - Cover: coding style, naming, architecture boundaries, stack preferences, testing, and anti-patterns to avoid.
-- Use 4–8 separate files with clear names like \`style.md\`, \`architecture.md\`, \`stack.md\`, \`anti-patterns.md\`, \`testing.md\` as appropriate.
-- Paths MUST be relative under \`.cursor/rules/\` (e.g. \`typescript.md\` not absolute paths).
-- No duplicate filenames. Content must be actionable and specific to the user's input.`;
+- No duplicate filenames. Content must be actionable and specific to the user's input.
+- Output ONLY the <<<FILE ... >>> / <<<END FILE>>> blocks — no prose before, between, or after them.`;
+}
 
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -29,7 +25,7 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { input?: string };
+  let body: { input?: unknown; platform?: unknown; files?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -40,17 +36,23 @@ export async function POST(req: Request) {
   }
 
   const input = typeof body.input === "string" ? body.input : "";
-  if (!input.trim()) {
-    return new Response(JSON.stringify({ error: "input is required" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
+  const platform =
+    typeof body.platform === "string"
+      ? (body.platform as PlatformId)
+      : "cursor";
+  const files = sanitizeFiles(body.files);
+
+  if (!input.trim() && !files) {
+    return new Response(
+      JSON.stringify({ error: "input or files are required" }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
   }
 
   const result = streamText({
     model: getAnthropicModel(),
-    system: RULES_SYSTEM,
-    prompt: `--- User content ---\n${input}`,
+    system: rulesSystem(platform),
+    prompt: formatUserContent(input, files ?? undefined),
     temperature: 0.4,
   });
 

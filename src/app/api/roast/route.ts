@@ -1,5 +1,6 @@
 import { streamText } from "ai";
 import { getAnthropicModel } from "@/lib/ai";
+import { formatUserContent, sanitizeFiles } from "@/lib/format-input";
 
 export const maxDuration = 120;
 
@@ -44,7 +45,12 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { input?: string; roastLevel?: number };
+  let body: {
+    input?: unknown;
+    roastLevel?: unknown;
+    language?: unknown;
+    files?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -59,21 +65,29 @@ export async function POST(req: Request) {
     typeof body.roastLevel === "number" && Number.isFinite(body.roastLevel)
       ? Math.min(100, Math.max(0, body.roastLevel))
       : 50;
+  const language =
+    typeof body.language === "string" ? body.language.slice(0, 40).trim() : "";
+  const files = sanitizeFiles(body.files);
 
-  if (!input.trim()) {
-    return new Response(JSON.stringify({ error: "input is required" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
+  if (!input.trim() && !files) {
+    return new Response(
+      JSON.stringify({ error: "input or files are required" }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
   }
 
   const tone = roastTone(roastLevel);
   const temperature = 0.55 + (roastLevel / 100) * 0.45;
 
+  const hints: string[] = [];
+  hints.push(`Roast level slider: ${roastLevel}/100.`);
+  hints.push(`Tone: ${tone}`);
+  if (language) hints.push(`Detected language: ${language} — lean into jokes about that stack.`);
+
   const result = streamText({
     model: getAnthropicModel(),
     system: ROAST_SYSTEM,
-    prompt: `Roast level slider: ${roastLevel}/100.\nTone: ${tone}\n\n--- User content ---\n${input}`,
+    prompt: `${hints.join("\n")}\n\n--- User content ---\n${formatUserContent(input, files ?? undefined)}`,
     temperature,
   });
 

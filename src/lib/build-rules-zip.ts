@@ -1,16 +1,26 @@
 import JSZip from "jszip";
 import type { RuleFile } from "@/lib/parse-rules-output";
 
-export async function buildCursorRulesZip(files: RuleFile[]): Promise<Blob> {
+/**
+ * Build a ZIP containing the given rule files. `folders` is the nested
+ * directory layout to place them under, e.g. [".cursor", "rules"] for Cursor
+ * or [] to place files at the ZIP root (Windsurf/Codex single files).
+ */
+export async function buildRulesZip(
+  files: RuleFile[],
+  folders: string[] = [],
+): Promise<Blob> {
   const zip = new JSZip();
-  const root = zip.folder(".cursor");
-  if (!root) throw new Error("Could not create .cursor folder in zip");
-  const rules = root.folder("rules");
-  if (!rules) throw new Error("Could not create rules folder in zip");
+  let target = zip;
+  for (const folder of folders) {
+    const next = target.folder(folder);
+    if (!next) throw new Error(`Could not create "${folder}" folder in zip`);
+    target = next;
+  }
 
   for (const f of files) {
     const normalized = f.path.replace(/^\/+/, "");
-    rules.file(normalized, f.content);
+    target.file(normalized, f.content);
   }
 
   return zip.generateAsync({ type: "blob" });
