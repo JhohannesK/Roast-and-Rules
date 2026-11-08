@@ -65,7 +65,7 @@ type GitHubTreeItem = {
   size: number;
 };
 
-function parseGitHubRepo(input: string): { owner: string; repo: string } | null {
+export function parseGitHubRepo(input: string): { owner: string; repo: string } | null {
   const s = input.trim().replace(/\.git$/i, "");
   if (!s) return null;
 
@@ -87,7 +87,7 @@ function parseGitHubRepo(input: string): { owner: string; repo: string } | null 
   return null;
 }
 
-function isSkippable(path: string, size: number): boolean {
+export function isSkippable(path: string, size: number): boolean {
   const lower = path.toLowerCase();
   if (size > MAX_FILE_BYTES) return true;
 
@@ -110,7 +110,7 @@ function isSkippable(path: string, size: number): boolean {
   return false;
 }
 
-function priority(path: string): number {
+export function priority(path: string): number {
   const lower = path.toLowerCase();
   const base = lower.split("/").pop() ?? "";
   if (/^(dockerfile|makefile|justfile|agents\.md|claude\.md|procfile|\.env.*)$/.test(base)) return 0;
